@@ -417,6 +417,102 @@ async def unregister(interaction: discord.Interaction):
         "✅ Ton profil a été supprimé.", ephemeral=True
     )
 
+
+@tree.command(name="help", description="Affiche toutes les commandes du bot")
+async def help(interaction: discord.Interaction):
+    embed = discord.Embed(
+        title="🎮 Gaming Recap Bot — Aide",
+        color=0x5865F2
+    )
+
+    # Enregistrement
+    embed.add_field(
+        name="📝 Enregistrement",
+        value=(
+            "`/register_all <pseudo> <tag>` — Enregistre LoL, TFT et Valorant\n"
+            "`/register_all <pseudo> <tag> <steam_id>` — Avec CS2\n"
+            "`/register <jeu> <pseudo> <tag>` — Enregistre un seul jeu\n"
+            "`/unregister` — Supprime ton profil\n"
+            "`/profile` — Affiche ton profil enregistré"
+        ),
+        inline=False
+    )
+
+    # Stats
+    embed.add_field(
+        name="📊 Stats",
+        value=(
+            "`/lol [@membre]` — Stats League of Legends\n"
+            "`/tft [@membre]` — Stats Teamfight Tactics\n"
+            "`/valorant [@membre]` — Stats Valorant\n"
+            "`/cs2 [@membre]` — Stats Counter-Strike 2\n"
+            "`/recap [@membre]` — Recap complet de la semaine"
+        ),
+        inline=False
+    )
+
+    # Leaderboard
+    embed.add_field(
+        name="🏆 Classement",
+        value=(
+            "`/leaderboard lol` — Classement LoL du serveur\n"
+            "`/leaderboard tft` — Classement TFT du serveur\n"
+            "`/leaderboard cs2` — Classement CS2 du serveur"
+        ),
+        inline=False
+    )
+
+    # Trouver ses IDs
+    embed.add_field(
+        name="🔑 Trouver son Riot ID",
+        value=(
+            "Ton Riot ID c'est ton **pseudo#TAG** visible en haut\n"
+            "à droite du client Riot.\n"
+            "Exemple : `LimingZhang#EUW`"
+        ),
+        inline=False
+    )
+
+    embed.add_field(
+        name="🔑 Trouver son Steam ID 64",
+        value=(
+            "1. Va sur [steamid.io](https://steamid.io)\n"
+            "2. Entre ton pseudo Steam\n"
+            "3. Copie la valeur **steamID64**\n\n"
+            "⚠️ Ton profil Steam doit être **public** :\n"
+            "Steam → Profil → Modifier → Confidentialité\n"
+            "→ Profil : Public\n"
+            "→ Détails des jeux : Public"
+        ),
+        inline=False
+    )
+
+    # Weekly recap
+    embed.add_field(
+        name="📅 Weekly Recap Automatique",
+        value=(
+            "Chaque **lundi à 10h**, le bot envoie le recap de tous\n"
+            "les membres enregistrés dans `#gaming-stats`.\n"
+            "Tu peux aussi le déclencher manuellement avec `/recap`."
+        ),
+        inline=False
+    )
+
+    # Jeux supportés
+    embed.add_field(
+        name="🎮 Jeux supportés",
+        value=(
+            "🟦 **LoL** — Rank, winrate, champion, KDA, dégâts, CS/min, vision, streak\n"
+            "🟪 **TFT** — Rank, placement moyen, top 4 rate\n"
+            "🟥 **Valorant** — Rank, winrate, agent, KDA, ACS\n"
+            "🟩 **CS2** — K/D, HS%, précision, winrate, carte préférée"
+        ),
+        inline=False
+    )
+
+    embed.set_footer(text="Gaming Recap Bot • Recap automatique tous les lundis à 10h")
+
+    await interaction.response.send_message(embed=embed)
 # ====================
 # MAIN
 # ====================
