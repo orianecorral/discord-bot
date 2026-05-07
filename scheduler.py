@@ -5,7 +5,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 
 from database import get_all_users
-from apis.riot import get_puuid, get_lol_stats, get_tft_stats
+from apis.riot_base import get_puuid
+from apis.lol import get_lol_stats
+from apis.tft import get_tft_stats
 from apis.valorant import get_valorant_stats
 from apis.steam import get_cs2_full_stats
 from formatter import format_recap
