@@ -256,6 +256,60 @@ def format_recap(lol=None, tft=None, valorant=None, cs2=None,
 
     return "\n".join(sections)
 
+def format_wow(stats):
+    if not stats:
+        return "❌ Données WoW indisponibles"
+
+    profile = stats.get("profile")
+    mythic = stats.get("mythic_plus")
+    rio = stats.get("raiderio")
+
+    if not profile:
+        return "❌ Personnage WoW introuvable"
+
+    guild_str = f" <{profile.get('guild')}>" if profile.get("guild") else ""
+    lines = [
+        "**World of Warcraft** ⚔️",
+        f"- {profile.get('name')}{guild_str} — "
+        f"{profile.get('spec')} {profile.get('class')} | "
+        f"ilvl {profile.get('equipped_item_level', '?')} "
+        f"({profile.get('item_level', '?')} avg)",
+        f"- {profile.get('race')} | {profile.get('faction')} | "
+        f"Niveau {profile.get('level')}",
+    ]
+
+    # Mythic+
+    rio_score = rio.get("rio_score", "N/A") if rio else "N/A"
+    blizz_score = mythic.get("score", "N/A") if mythic else "N/A"
+    lines.append(f"- M+ Score : {rio_score} (Raider.IO) | {blizz_score} (Blizzard)")
+
+    if mythic and mythic.get("best_runs"):
+        best = mythic["best_runs"][0]
+        upgrades_str = "⭐" * best.get("upgrades", 0)
+        lines.append(
+            f"- Meilleure key : +{best['level']} {best['dungeon']} "
+            f"{upgrades_str} ({best['duration']}min)"
+        )
+
+    # Runs récents raider.io
+    if rio and rio.get("recent_runs"):
+        runs_str = " | ".join(
+            f"+{r['level']} {r['dungeon']}"
+            for r in rio["recent_runs"]
+        )
+        lines.append(f"- Runs récents : {runs_str}")
+
+    # Progression raid
+    if rio and rio.get("latest_raid"):
+        raid = rio["latest_raid"]
+        lines.append(
+            f"- Raid : {raid['name']} — "
+            f"{raid['normal']}N / {raid['heroic']}H / "
+            f"{raid['mythic']}M (/{raid['total']})"
+        )
+
+    return "\n".join(lines)
+
 def format_stats_embed(game, stats, username):
     if game == "lol":
         return format_lol(stats)

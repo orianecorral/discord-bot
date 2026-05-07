@@ -11,7 +11,8 @@ from apis.lol import get_lol_stats
 from apis.tft import get_tft_stats
 from apis.valorant import get_valorant_stats
 from apis.steam import get_cs2_full_stats
-from formatter import format_recap, format_stats_embed
+from apis.wow import get_wow_stats
+from formatter import format_recap, format_stats_embed, format_wow
 
 load_dotenv(override=False)
 
@@ -51,9 +52,9 @@ async def on_ready():
 
 @tree.command(name="register", description="Enregistre un jeu sur ton profil")
 @app_commands.describe(
-    game="Le jeu (lol, tft, valorant, cs2)",
-    username="Ton pseudo (ou Steam ID 64 pour CS2)",
-    tag="Ton tag (ex: EUW) — pas nécessaire pour CS2",
+    game="Le jeu (lol, tft, valorant, cs2, wow)",
+    username="Ton pseudo (ou Steam ID 64 pour CS2, personnage pour WoW)",
+    tag="Ton tag (ex: EUW) ou royaume pour WoW",
     region="Ta région (eu, na, kr) — défaut: eu",
 )
 async def register(
@@ -98,9 +99,26 @@ async def register(
             ephemeral=True
         )
 
+    elif game == "wow":
+        if not tag:
+            await interaction.followup.send(
+                "❌ Le royaume est requis pour WoW. "
+                "Utilise `/register wow <personnage> <royaume>`",
+                ephemeral=True
+            )
+            return
+        register_game(
+            discord_id, discord_name, game,
+            character=username, realm=tag, region=region
+        )
+        await interaction.followup.send(
+            f"✅ **WoW** enregistré : `{username}` sur `{tag}` ({region.upper()})",
+            ephemeral=True
+        )
+
     else:
         await interaction.followup.send(
-            "❌ Jeu non reconnu. Choix disponibles : `lol`, `tft`, `valorant`, `cs2`",
+            "❌ Jeu non reconnu. Choix disponibles : `lol`, `tft`, `valorant`, `cs2`, `wow`",
             ephemeral=True
         )
 
@@ -174,6 +192,11 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
         lines.append(f"🟥 **Valorant** : `{user['valorant_username']}#{user['valorant_tag']}`")
     if user.get("steam_id"):
         lines.append(f"🟩 **CS2** : Steam ID `{user['steam_id']}`")
+    if user.get("wow_character"):
+        lines.append(
+            f"⚔️ **WoW** : `{user['wow_character']}` sur "
+            f"`{user['wow_realm']}` ({user['wow_region'].upper()})"
+        )
     if len(lines) == 1:
         lines.append("Aucun jeu enregistré. Utilise `/register_all` !")
 
@@ -220,6 +243,12 @@ async def fetch_and_send(interaction, target, game):
             stats = get_cs2_full_stats(user["steam_id"])
             result = format_stats_embed(game, stats, target.display_name)
 
+        elif game == "wow" and user.get("wow_character"):
+            stats = get_wow_stats(
+                user["wow_character"], user["wow_realm"], user["wow_region"]
+            )
+            result = format_wow(stats)
+
         else:
             result = (
                 f"❌ **{target.display_name}** n'a pas de compte "
@@ -251,6 +280,11 @@ async def valorant(interaction: discord.Interaction, member: discord.Member = No
 async def cs2(interaction: discord.Interaction, member: discord.Member = None):
     await fetch_and_send(interaction, member or interaction.user, "cs2")
 
+@tree.command(name="wow", description="Stats World of Warcraft d'un joueur")
+@app_commands.describe(member="Membre du serveur (optionnel)")
+async def wow(interaction: discord.Interaction, member: discord.Member = None):
+    await fetch_and_send(interaction, member or interaction.user, "wow")
+
 # ====================
 # RECAP
 # ====================
@@ -269,7 +303,7 @@ async def recap(interaction: discord.Interaction, member: discord.Member = None)
         return
 
     msg = await interaction.followup.send("⏳ Génération du recap en cours...")
-    lol_stats = tft_stats = val_stats = cs2_stats = None
+    lol_stats = tft_stats = val_stats = cs2_stats = wow_stats = None
 
     try:
         if user.get("lol_username"):
@@ -290,6 +324,11 @@ async def recap(interaction: discord.Interaction, member: discord.Member = None)
         if user.get("steam_id"):
             cs2_stats = get_cs2_full_stats(user["steam_id"])
 
+        if user.get("wow_character"):
+            wow_stats = get_wow_stats(
+                user["wow_character"], user["wow_realm"], user["wow_region"]
+            )
+
         now = datetime.now()
         week_start = (now - timedelta(days=7)).strftime("%d/%m")
         week_end = now.strftime("%d/%m/%Y")
@@ -299,6 +338,7 @@ async def recap(interaction: discord.Interaction, member: discord.Member = None)
             tft=tft_stats,
             valorant=val_stats,
             cs2=cs2_stats,
+            wow=wow_stats,
             username=target.display_name,
             week_start=week_start,
             week_end=week_end,
@@ -375,6 +415,19 @@ async def leaderboard(interaction: discord.Interaction, game: str):
                         "sort": stats["kd"],
                     })
 
+            elif game == "wow" and user.get("wow_character"):
+                stats = get_wow_stats(
+                    user["wow_character"], user["wow_realm"], user["wow_region"]
+                )
+                if stats and stats.get("raiderio"):
+                    score = stats["raiderio"].get("rio_score", 0)
+                    entries.append({
+                        "name": name,
+                        "rank": f"Rio {score}",
+                        "lp": score,
+                        "sort": score,
+                    })
+
         except Exception:
             continue
 
@@ -407,16 +460,8 @@ def _rank_to_int(tier, division, lp):
     return tier_val + div_val + lp
 
 # ====================
-# UNREGISTER
+# HELP
 # ====================
-
-@tree.command(name="unregister", description="Supprime ton profil du bot")
-async def unregister(interaction: discord.Interaction):
-    delete_user(str(interaction.user.id))
-    await interaction.response.send_message(
-        "✅ Ton profil a été supprimé.", ephemeral=True
-    )
-
 
 @tree.command(name="help", description="Affiche toutes les commandes du bot")
 async def help(interaction: discord.Interaction):
@@ -425,20 +470,19 @@ async def help(interaction: discord.Interaction):
         color=0x5865F2
     )
 
-    # Enregistrement
     embed.add_field(
         name="📝 Enregistrement",
         value=(
             "`/register_all <pseudo> <tag>` — Enregistre LoL, TFT et Valorant\n"
             "`/register_all <pseudo> <tag> <steam_id>` — Avec CS2\n"
             "`/register <jeu> <pseudo> <tag>` — Enregistre un seul jeu\n"
+            "`/register wow <personnage> <royaume>` — Enregistre WoW\n"
             "`/unregister` — Supprime ton profil\n"
             "`/profile` — Affiche ton profil enregistré"
         ),
         inline=False
     )
 
-    # Stats
     embed.add_field(
         name="📊 Stats",
         value=(
@@ -446,23 +490,23 @@ async def help(interaction: discord.Interaction):
             "`/tft [@membre]` — Stats Teamfight Tactics\n"
             "`/valorant [@membre]` — Stats Valorant\n"
             "`/cs2 [@membre]` — Stats Counter-Strike 2\n"
+            "`/wow [@membre]` — Stats World of Warcraft\n"
             "`/recap [@membre]` — Recap complet de la semaine"
         ),
         inline=False
     )
 
-    # Leaderboard
     embed.add_field(
         name="🏆 Classement",
         value=(
             "`/leaderboard lol` — Classement LoL du serveur\n"
             "`/leaderboard tft` — Classement TFT du serveur\n"
-            "`/leaderboard cs2` — Classement CS2 du serveur"
+            "`/leaderboard cs2` — Classement CS2 du serveur\n"
+            "`/leaderboard wow` — Classement WoW (score M+)"
         ),
         inline=False
     )
 
-    # Trouver ses IDs
     embed.add_field(
         name="🔑 Trouver son Riot ID",
         value=(
@@ -481,38 +525,47 @@ async def help(interaction: discord.Interaction):
             "3. Copie la valeur **steamID64**\n\n"
             "⚠️ Ton profil Steam doit être **public** :\n"
             "Steam → Profil → Modifier → Confidentialité\n"
-            "→ Profil : Public\n"
-            "→ Détails des jeux : Public"
+            "→ Profil : Public + Détails des jeux : Public"
         ),
         inline=False
     )
 
-    # Weekly recap
     embed.add_field(
         name="📅 Weekly Recap Automatique",
         value=(
             "Chaque **lundi à 10h**, le bot envoie le recap de tous\n"
             "les membres enregistrés dans `#gaming-stats`.\n"
-            "Tu peux aussi le déclencher manuellement avec `/recap`."
+            "Tu peux aussi le déclencher avec `/recap`."
         ),
         inline=False
     )
 
-    # Jeux supportés
     embed.add_field(
         name="🎮 Jeux supportés",
         value=(
             "🟦 **LoL** — Rank, winrate, champion, KDA, dégâts, CS/min, vision, streak\n"
             "🟪 **TFT** — Rank, placement moyen, top 4 rate\n"
             "🟥 **Valorant** — Rank, winrate, agent, KDA, ACS\n"
-            "🟩 **CS2** — K/D, HS%, précision, winrate, carte préférée"
+            "🟩 **CS2** — K/D, HS%, précision, winrate, carte préférée\n"
+            "⚔️ **WoW** — ilvl, M+ score, progression raid"
         ),
         inline=False
     )
 
     embed.set_footer(text="Gaming Recap Bot • Recap automatique tous les lundis à 10h")
-
     await interaction.response.send_message(embed=embed)
+
+# ====================
+# UNREGISTER
+# ====================
+
+@tree.command(name="unregister", description="Supprime ton profil du bot")
+async def unregister(interaction: discord.Interaction):
+    delete_user(str(interaction.user.id))
+    await interaction.response.send_message(
+        "✅ Ton profil a été supprimé.", ephemeral=True
+    )
+
 # ====================
 # MAIN
 # ====================
