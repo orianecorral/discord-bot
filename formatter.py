@@ -169,12 +169,16 @@ def format_cs2(stats):
             f"- Stats détaillées : profil Steam privé 🔒"
         )
 
-    if stats.get("error") == "no_data":
+    if stats.get("error") == "no_game":
+        return "**Counter-Strike 2** 🟩\n- Aucune partie jouée sur ce compte"
+
+    if stats.get("error") in ("no_data", "error"):
         return "**Counter-Strike 2** 🟩\n- Aucune donnée disponible"
 
     hours = stats.get("hours_2weeks")
     hours_str = f"{hours}h" if hours is not None else "N/A"
     played = stats.get("played_this_week", False)
+    source = stats.get("source", "steam")
 
     lines = ["**Counter-Strike 2** 🟩"]
 
@@ -187,11 +191,33 @@ def format_cs2(stats):
         f"- K/D ratio : {stats.get('kd', 'N/A')} | "
         f"HS% : {stats.get('hs_percent', 'N/A')}%"
     )
-    lines.append(
-        f"- Winrate global : {stats.get('win_rate', 'N/A')}% "
-        f"({stats.get('total_matches_won', 0)}W / "
-        f"{stats.get('total_matches', 0)} matchs)"
-    )
+
+    if source == "steam":
+        lines.append(
+            f"- Précision : {stats.get('accuracy', 'N/A')}% | "
+            f"MVPs : {stats.get('total_mvps', 'N/A')}"
+        )
+        lines.append(
+            f"- Winrate global : {stats.get('win_rate', 'N/A')}% "
+            f"({stats.get('total_matches_won', 0)}W / "
+            f"{stats.get('total_matches', 0)} matchs)"
+        )
+        lines.append(
+            f"- Carte préférée : {stats.get('favorite_map', 'N/A')} | "
+            f"Knife kills : {stats.get('total_knife_kills', 0)}"
+        )
+        lines.append(
+            f"- Bombes posées : {stats.get('total_bomb_planted', 0)} | "
+            f"Désamorcées : {stats.get('total_bomb_defused', 0)}"
+        )
+    else:
+        # Source csstats.gg
+        lines.append(f"- Winrate : {stats.get('win_rate', 'N/A')}")
+        if stats.get("rating") != "N/A":
+            lines.append(f"- Rating : {stats.get('rating', 'N/A')}")
+        if stats.get("adr") != "N/A":
+            lines.append(f"- ADR : {stats.get('adr', 'N/A')}")
+        lines.append("- *(via csstats.gg)*")
 
     return "\n".join(lines)
 
