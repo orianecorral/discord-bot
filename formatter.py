@@ -221,7 +221,7 @@ def format_cs2(stats):
 
     return "\n".join(lines)
 
-def format_recap(lol=None, tft=None, valorant=None, cs2=None,
+def format_recap(lol=None, tft=None, valorant=None, cs2=None, wow=None,
                  username=None, week_start=None, week_end=None):
     now = datetime.now()
     if not week_start:
@@ -249,6 +249,9 @@ def format_recap(lol=None, tft=None, valorant=None, cs2=None,
         sections.append("")
     if cs2 is not None:
         sections.append(format_cs2(cs2))
+        sections.append("")
+    if wow is not None:
+        sections.append(format_wow(wow))
         sections.append("")
 
     sections.append("━━━━━━━━━━━━━━━━━━━━━━")
@@ -319,4 +322,6 @@ def format_stats_embed(game, stats, username):
         return format_valorant(stats)
     elif game == "cs2":
         return format_cs2(stats)
+    elif game == "wow":
+        return format_wow(stats)
     return "❌ Jeu non reconnu"
