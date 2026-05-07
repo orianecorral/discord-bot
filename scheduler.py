@@ -8,18 +8,16 @@ from database import get_all_users
 from apis.riot import get_puuid, get_lol_stats, get_tft_stats
 from apis.valorant import get_valorant_stats
 from apis.steam import get_cs2_full_stats
-from apis.wow import get_wow_stats
 from formatter import format_recap
 
-load_dotenv()
+load_dotenv(override=False)
 
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
+DISCORD_WEBHOOK_URL = os.environ.get("DISCORD_WEBHOOK_URL")
 
 def send_webhook(message):
     if not DISCORD_WEBHOOK_URL:
         print("❌ Pas de webhook Discord configuré")
         return
-
     chunks = [message[i:i+2000] for i in range(0, len(message), 2000)]
     for chunk in chunks:
         requests.post(DISCORD_WEBHOOK_URL, json={"content": chunk})
@@ -46,7 +44,7 @@ async def send_weekly_recaps(bot=None):
 
     for user in users:
         try:
-            lol_stats = tft_stats = val_stats = cs2_stats = wow_stats = None
+            lol_stats = tft_stats = val_stats = cs2_stats = None
 
             if user.get("lol_username"):
                 puuid = get_puuid(user["lol_username"], user["lol_tag"])
@@ -66,17 +64,11 @@ async def send_weekly_recaps(bot=None):
             if user.get("steam_id"):
                 cs2_stats = get_cs2_full_stats(user["steam_id"])
 
-            if user.get("wow_character"):
-                wow_stats = get_wow_stats(
-                    user["wow_character"], user["wow_realm"], user["wow_region"]
-                )
-
             message = format_recap(
                 lol=lol_stats,
                 tft=tft_stats,
                 valorant=val_stats,
                 cs2=cs2_stats,
-                wow=wow_stats,
                 username=user["discord_name"],
                 week_start=week_start,
                 week_end=week_end,

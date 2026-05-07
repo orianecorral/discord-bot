@@ -3,16 +3,9 @@ import requests
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=False)
 
-VALORANT_API_KEY = os.getenv("VALORANT_API_KEY")
-
-REGIONS = {
-    "eu": "eu",
-    "na": "na",
-    "ap": "ap",
-    "kr": "kr",
-}
+VALORANT_API_KEY = os.environ.get("VALORANT_API_KEY")
 
 def get_valorant_rank(username, tag, region="eu"):
     url = f"https://api.henrikdev.xyz/valorant/v1/mmr/{region}/{username}/{tag}"
@@ -20,7 +13,7 @@ def get_valorant_rank(username, tag, region="eu"):
     r = requests.get(url, headers=headers)
     if r.status_code != 200:
         return None
-    
+
     data = r.json().get("data", {})
     return {
         "rank": data.get("currenttierpatched", "Unranked"),
@@ -32,11 +25,11 @@ def get_valorant_matches(username, tag, region="eu", days=7):
     url = f"https://api.henrikdev.xyz/valorant/v2/matches/{region}/{username}/{tag}"
     headers = {"Authorization": VALORANT_API_KEY}
     params = {"filter": "competitive", "size": 20}
-    
+
     r = requests.get(url, headers=headers, params=params)
     if r.status_code != 200:
         return []
-    
+
     matches_data = r.json().get("data", [])
     cutoff = datetime.now() - timedelta(days=days)
     matches = []
@@ -45,7 +38,7 @@ def get_valorant_matches(username, tag, region="eu", days=7):
         metadata = match.get("metadata", {})
         timestamp = metadata.get("game_start", 0)
         game_time = datetime.fromtimestamp(timestamp)
-        
+
         if game_time < cutoff:
             continue
 
