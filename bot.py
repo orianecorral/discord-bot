@@ -22,6 +22,10 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 tree = bot.tree
 
+# ====================
+# EVENTS
+# ====================
+
 @bot.event
 async def on_ready():
     init_db()
@@ -39,9 +43,13 @@ async def on_ready():
     except Exception as e:
         print(f"❌ Erreur sync commands : {e}")
 
-@tree.command(name="register", description="Enregistre ton profil de jeu")
+# ====================
+# REGISTER
+# ====================
+
+@tree.command(name="register", description="Enregistre un jeu sur ton profil")
 @app_commands.describe(
-    game="Le jeu à enregistrer (lol, tft, valorant, cs2)",
+    game="Le jeu (lol, tft, valorant, cs2)",
     username="Ton pseudo (ou Steam ID 64 pour CS2)",
     tag="Ton tag (ex: EUW) — pas nécessaire pour CS2",
     region="Ta région (eu, na, kr) — défaut: eu",
@@ -94,6 +102,53 @@ async def register(
             ephemeral=True
         )
 
+@tree.command(name="register_all", description="Enregistre LoL, TFT et Valorant en une seule commande")
+@app_commands.describe(
+    riot_username="Ton pseudo Riot (même pour LoL, TFT et Valorant)",
+    riot_tag="Ton tag Riot (ex: EUW)",
+    steam_id="Ton Steam ID 64 pour CS2 (optionnel)",
+    region="Ta région (eu, na, kr) — défaut: eu",
+)
+async def register_all(
+    interaction: discord.Interaction,
+    riot_username: str,
+    riot_tag: str,
+    steam_id: str = None,
+    region: str = "eu",
+):
+    await interaction.response.defer(ephemeral=True)
+    discord_id = str(interaction.user.id)
+    discord_name = interaction.user.display_name
+
+    puuid = get_puuid(riot_username, riot_tag, region)
+    if not puuid:
+        await interaction.followup.send(
+            f"❌ Compte Riot introuvable : `{riot_username}#{riot_tag}`",
+            ephemeral=True
+        )
+        return
+
+    register_game(discord_id, discord_name, "lol", username=riot_username, tag=riot_tag)
+    register_game(discord_id, discord_name, "tft", username=riot_username, tag=riot_tag)
+    register_game(discord_id, discord_name, "valorant", username=riot_username, tag=riot_tag)
+
+    lines = [
+        f"✅ **LoL** : `{riot_username}#{riot_tag}`",
+        f"✅ **TFT** : `{riot_username}#{riot_tag}`",
+        f"✅ **Valorant** : `{riot_username}#{riot_tag}`",
+    ]
+
+    if steam_id:
+        register_game(discord_id, discord_name, "cs2", steam_id=steam_id)
+        lines.append(f"✅ **CS2** : Steam ID `{steam_id}`")
+
+    lines.append(f"\n👤 Profil enregistré pour **{discord_name}** !")
+    await interaction.followup.send("\n".join(lines), ephemeral=True)
+
+# ====================
+# PROFILE
+# ====================
+
 @tree.command(name="profile", description="Affiche ton profil enregistré")
 @app_commands.describe(member="Membre du serveur (optionnel)")
 async def profile(interaction: discord.Interaction, member: discord.Member = None):
@@ -103,7 +158,7 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
     if not user:
         await interaction.response.send_message(
             f"❌ Aucun profil enregistré pour **{target.display_name}**. "
-            f"Utilise `/register` pour commencer !",
+            f"Utilise `/register_all` pour commencer !",
             ephemeral=True
         )
         return
@@ -118,9 +173,13 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
     if user.get("steam_id"):
         lines.append(f"🟩 **CS2** : Steam ID `{user['steam_id']}`")
     if len(lines) == 1:
-        lines.append("Aucun jeu enregistré. Utilise `/register` !")
+        lines.append("Aucun jeu enregistré. Utilise `/register_all` !")
 
     await interaction.response.send_message("\n".join(lines), ephemeral=True)
+
+# ====================
+# STATS PAR JEU
+# ====================
 
 async def fetch_and_send(interaction, target, game):
     await interaction.response.defer()
@@ -128,11 +187,14 @@ async def fetch_and_send(interaction, target, game):
 
     if not user:
         await interaction.followup.send(
-            f"❌ **{target.display_name}** n'a pas de profil enregistré."
+            f"❌ **{target.display_name}** n'a pas de profil enregistré. "
+            f"Utilise `/register_all` pour commencer !"
         )
         return
 
-    msg = await interaction.followup.send(f"⏳ Récupération des stats **{game.upper()}**...")
+    msg = await interaction.followup.send(
+        f"⏳ Récupération des stats **{game.upper()}** de **{target.display_name}**..."
+    )
     result = None
 
     try:
@@ -147,7 +209,9 @@ async def fetch_and_send(interaction, target, game):
             result = format_stats_embed(game, stats, target.display_name)
 
         elif game == "valorant" and user.get("valorant_username"):
-            stats = get_valorant_stats(user["valorant_username"], user["valorant_tag"])
+            stats = get_valorant_stats(
+                user["valorant_username"], user["valorant_tag"]
+            )
             result = format_stats_embed(game, stats, target.display_name)
 
         elif game == "cs2" and user.get("steam_id"):
@@ -155,7 +219,10 @@ async def fetch_and_send(interaction, target, game):
             result = format_stats_embed(game, stats, target.display_name)
 
         else:
-            result = f"❌ **{target.display_name}** n'a pas de compte **{game.upper()}** enregistré."
+            result = (
+                f"❌ **{target.display_name}** n'a pas de compte "
+                f"**{game.upper()}** enregistré."
+            )
 
     except Exception as e:
         result = f"❌ Erreur : {e}"
@@ -181,6 +248,10 @@ async def valorant(interaction: discord.Interaction, member: discord.Member = No
 @app_commands.describe(member="Membre du serveur (optionnel)")
 async def cs2(interaction: discord.Interaction, member: discord.Member = None):
     await fetch_and_send(interaction, member or interaction.user, "cs2")
+
+# ====================
+# RECAP
+# ====================
 
 @tree.command(name="recap", description="Weekly recap complet d'un joueur")
 @app_commands.describe(member="Membre du serveur (optionnel)")
@@ -236,6 +307,10 @@ async def recap(interaction: discord.Interaction, member: discord.Member = None)
 
     await msg.edit(content=message)
 
+# ====================
+# LEADERBOARD
+# ====================
+
 @tree.command(name="leaderboard", description="Classement du serveur par jeu")
 @app_commands.describe(game="Le jeu (lol, tft, valorant, cs2)")
 async def leaderboard(interaction: discord.Interaction, game: str):
@@ -247,7 +322,9 @@ async def leaderboard(interaction: discord.Interaction, game: str):
         await interaction.followup.send("❌ Aucun joueur enregistré sur ce serveur.")
         return
 
-    msg = await interaction.followup.send(f"⏳ Génération du leaderboard **{game.upper()}**...")
+    msg = await interaction.followup.send(
+        f"⏳ Génération du leaderboard **{game.upper()}**..."
+    )
     entries = []
 
     for user in users:
@@ -266,7 +343,9 @@ async def leaderboard(interaction: discord.Interaction, game: str):
                             "name": name,
                             "rank": f"{solo['tier'].capitalize()} {solo['division']}",
                             "lp": solo["lp"],
-                            "sort": _rank_to_int(solo["tier"], solo["division"], solo["lp"]),
+                            "sort": _rank_to_int(
+                                solo["tier"], solo["division"], solo["lp"]
+                            ),
                         })
 
             elif game == "tft" and user.get("tft_username"):
@@ -279,7 +358,9 @@ async def leaderboard(interaction: discord.Interaction, game: str):
                             "name": name,
                             "rank": f"{rank['tier'].capitalize()} {rank['division']}",
                             "lp": rank["lp"],
-                            "sort": _rank_to_int(rank["tier"], rank["division"], rank["lp"]),
+                            "sort": _rank_to_int(
+                                rank["tier"], rank["division"], rank["lp"]
+                            ),
                         })
 
             elif game == "cs2" and user.get("steam_id"):
@@ -296,7 +377,9 @@ async def leaderboard(interaction: discord.Interaction, game: str):
             continue
 
     if not entries:
-        await msg.edit(content=f"❌ Aucune donnée disponible pour **{game.upper()}**.")
+        await msg.edit(
+            content=f"❌ Aucune donnée disponible pour **{game.upper()}**."
+        )
         return
 
     entries.sort(key=lambda x: x["sort"], reverse=True)
@@ -305,21 +388,36 @@ async def leaderboard(interaction: discord.Interaction, game: str):
 
     for i, entry in enumerate(entries[:10]):
         medal = medals[i] if i < 3 else f"`{i+1}.`"
-        lines.append(f"{medal} **{entry['name']}** — {entry['rank']} ({entry['lp']} LP)")
+        lines.append(
+            f"{medal} **{entry['name']}** — {entry['rank']} ({entry['lp']} LP)"
+        )
 
     await msg.edit(content="\n".join(lines))
 
 def _rank_to_int(tier, division, lp):
-    tiers = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"]
+    tiers = [
+        "IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM",
+        "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"
+    ]
     divisions = {"IV": 0, "III": 1, "II": 2, "I": 3}
     tier_val = tiers.index(tier.upper()) * 400 if tier.upper() in tiers else 0
     div_val = divisions.get(division, 0) * 100
     return tier_val + div_val + lp
 
+# ====================
+# UNREGISTER
+# ====================
+
 @tree.command(name="unregister", description="Supprime ton profil du bot")
 async def unregister(interaction: discord.Interaction):
     delete_user(str(interaction.user.id))
-    await interaction.response.send_message("✅ Ton profil a été supprimé.", ephemeral=True)
+    await interaction.response.send_message(
+        "✅ Ton profil a été supprimé.", ephemeral=True
+    )
+
+# ====================
+# MAIN
+# ====================
 
 if __name__ == "__main__":
     bot.run(DISCORD_TOKEN)
