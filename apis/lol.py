@@ -76,11 +76,30 @@ def get_lol_matches(puuid, region="euw", days=7, queue=QUEUE_RANKED_SOLO, count=
         vision_score = player.get("visionScore", 0)
         cs = player.get("totalMinionsKilled", 0) + player.get("neutralMinionsKilled", 0)
         game_duration = data.get("info", {}).get("gameDuration", 1)
-        game_duration_min = game_duration / 60
+        game_duration_min = game_duration / 60 or 1
+
+        # Dégâts de l'équipe pour calculer le % carrying
+        team_id = player.get("teamId")
+        team_damage = sum(
+            p.get("totalDamageDealtToChampions", 0)
+            for p in participants
+            if p.get("teamId") == team_id
+        ) or 1
+        damage_share = round(total_damage / team_damage * 100, 1)
+
+        # Gold de l'équipe
+        team_gold = sum(
+            p.get("goldEarned", 0)
+            for p in participants
+            if p.get("teamId") == team_id
+        ) or 1
+        gold_share = round(player.get("goldEarned", 0) / team_gold * 100, 1)
 
         matches.append({
             "match_id": match_id,
             "champion": player.get("championName"),
+            "champion_id": player.get("championId"),
+            "position": player.get("teamPosition", "UNKNOWN"),
             "win": player.get("win"),
             "kills": kills,
             "deaths": player.get("deaths", 0),
@@ -88,34 +107,157 @@ def get_lol_matches(puuid, region="euw", days=7, queue=QUEUE_RANKED_SOLO, count=
             "kda": round((kills + assists) / deaths, 2),
             "kda_str": f"{kills}/{player.get('deaths', 0)}/{assists}",
             "total_damage": total_damage,
+            "damage_per_min": round(total_damage / game_duration_min),
+            "damage_share": damage_share,
             "vision_score": vision_score,
+            "vision_per_min": round(vision_score / game_duration_min, 2),
             "cs": cs,
-            "cs_per_min": round(cs / game_duration_min, 1) if game_duration_min > 0 else 0,
+            "cs_per_min": round(cs / game_duration_min, 1),
             "gold": player.get("goldEarned", 0),
+            "gold_per_min": round(player.get("goldEarned", 0) / game_duration_min),
+            "gold_share": gold_share,
             "double_kills": player.get("doubleKills", 0),
             "triple_kills": player.get("tripleKills", 0),
             "quadra_kills": player.get("quadraKills", 0),
             "penta_kills": player.get("pentaKills", 0),
             "first_blood": player.get("firstBloodKill", False),
+            "first_blood_assist": player.get("firstBloodAssist", False),
             "turret_kills": player.get("turretKills", 0),
+            "inhibitor_kills": player.get("inhibitorKills", 0),
+            "wards_placed": player.get("wardsPlaced", 0),
+            "wards_killed": player.get("wardsKilled", 0),
+            "control_wards": player.get("visionWardsBoughtInGame", 0),
+            "solo_kills": player.get("kills", 0),
             "duration_min": round(game_duration_min, 1),
+            "game_ended_early": data.get("info", {}).get("gameEndedInEarlySurrender", False),
             "timestamp": data.get("info", {}).get("gameStartTimestamp"),
             "queue": data.get("info", {}).get("queueId"),
         })
 
     return matches
 
+def get_champion_analysis(matches):
+    if not matches:
+        return {}
+
+    champ_data = {}
+
+    for m in matches:
+        champ = m["champion"]
+        if champ not in champ_data:
+            champ_data[champ] = {
+                "games": 0,
+                "wins": 0,
+                "kills": 0,
+                "deaths": 0,
+                "assists": 0,
+                "total_damage": 0,
+                "damage_per_min": 0,
+                "damage_share": 0,
+                "cs_per_min": 0,
+                "vision_per_min": 0,
+                "gold_per_min": 0,
+                "gold_share": 0,
+                "double_kills": 0,
+                "triple_kills": 0,
+                "quadra_kills": 0,
+                "penta_kills": 0,
+                "first_bloods": 0,
+                "positions": {},
+                "durations": [],
+                "game_results": [],
+            }
+
+        c = champ_data[champ]
+        c["games"] += 1
+        if m["win"]:
+            c["wins"] += 1
+        c["kills"] += m["kills"]
+        c["deaths"] += m["deaths"]
+        c["assists"] += m["assists"]
+        c["total_damage"] += m["total_damage"]
+        c["damage_per_min"] += m["damage_per_min"]
+        c["damage_share"] += m["damage_share"]
+        c["cs_per_min"] += m["cs_per_min"]
+        c["vision_per_min"] += m["vision_per_min"]
+        c["gold_per_min"] += m["gold_per_min"]
+        c["gold_share"] += m["gold_share"]
+        c["double_kills"] += m["double_kills"]
+        c["triple_kills"] += m["triple_kills"]
+        c["quadra_kills"] += m["quadra_kills"]
+        c["penta_kills"] += m["penta_kills"]
+        if m["first_blood"]:
+            c["first_bloods"] += 1
+        pos = m.get("position", "UNKNOWN")
+        c["positions"][pos] = c["positions"].get(pos, 0) + 1
+        c["durations"].append(m["duration_min"])
+        c["game_results"].append(1 if m["win"] else 0)
+
+    # Calcul des moyennes
+    result = {}
+    for champ, c in champ_data.items():
+        g = c["games"]
+        deaths = c["deaths"] or 1
+        avg_kda = round((c["kills"] + c["assists"]) / deaths, 2)
+        winrate = round(c["wins"] / g * 100, 1)
+        avg_duration = round(sum(c["durations"]) / g, 1)
+
+        # Position principale
+        main_pos = max(c["positions"], key=c["positions"].get) if c["positions"] else "UNKNOWN"
+
+        # Tendance winrate (dernières games vs premières)
+        results = c["game_results"]
+        if len(results) >= 4:
+            first_half = sum(results[:len(results)//2]) / (len(results)//2)
+            second_half = sum(results[len(results)//2:]) / (len(results) - len(results)//2)
+            trend = round((second_half - first_half) * 100, 1)
+        else:
+            trend = 0
+
+        # Winrate selon durée
+        short_games = [r for r, d in zip(c["game_results"], c["durations"]) if d < 25]
+        long_games = [r for r, d in zip(c["game_results"], c["durations"]) if d >= 35]
+        short_wr = round(sum(short_games) / len(short_games) * 100, 1) if short_games else None
+        long_wr = round(sum(long_games) / len(long_games) * 100, 1) if long_games else None
+
+        result[champ] = {
+            "games": g,
+            "wins": c["wins"],
+            "losses": g - c["wins"],
+            "winrate": winrate,
+            "avg_kda": avg_kda,
+            "avg_kills": round(c["kills"] / g, 1),
+            "avg_deaths": round(c["deaths"] / g, 1),
+            "avg_assists": round(c["assists"] / g, 1),
+            "avg_damage": round(c["total_damage"] / g),
+            "avg_damage_per_min": round(c["damage_per_min"] / g),
+            "avg_damage_share": round(c["damage_share"] / g, 1),
+            "avg_cs_per_min": round(c["cs_per_min"] / g, 1),
+            "avg_vision_per_min": round(c["vision_per_min"] / g, 2),
+            "avg_gold_per_min": round(c["gold_per_min"] / g),
+            "avg_gold_share": round(c["gold_share"] / g, 1),
+            "double_kills": c["double_kills"],
+            "triple_kills": c["triple_kills"],
+            "quadra_kills": c["quadra_kills"],
+            "penta_kills": c["penta_kills"],
+            "first_bloods": c["first_bloods"],
+            "main_position": main_pos,
+            "avg_duration": avg_duration,
+            "trend": trend,
+            "short_game_wr": short_wr,
+            "long_game_wr": long_wr,
+        }
+
+    return dict(sorted(result.items(), key=lambda x: x[1]["games"], reverse=True))
+
 def get_lol_stats(puuid, region="euw", days=7):
     ranked_matches = get_lol_matches(puuid, region, days, QUEUE_RANKED_SOLO)
     aram_matches = get_lol_matches(puuid, region, days, QUEUE_ARAM, count=10)
     rank = get_lol_rank(puuid, region)
 
-    all_matches = ranked_matches + aram_matches
-
     if not ranked_matches and not aram_matches:
         return {"rank": rank, "matches": [], "aram_matches": [], "summary": None}
 
-    # Stats ranked
     ranked_summary = None
     if ranked_matches:
         wins = sum(1 for m in ranked_matches if m["win"])
@@ -125,25 +267,23 @@ def get_lol_stats(puuid, region="euw", days=7):
         avg_damage = round(sum(m["total_damage"] for m in ranked_matches) / len(ranked_matches))
         avg_vision = round(sum(m["vision_score"] for m in ranked_matches) / len(ranked_matches), 1)
         avg_cs_min = round(sum(m["cs_per_min"] for m in ranked_matches) / len(ranked_matches), 1)
+        avg_damage_share = round(sum(m["damage_share"] for m in ranked_matches) / len(ranked_matches), 1)
 
-        # Champion le plus joué
         champion_count = {}
         for m in ranked_matches:
             champ = m["champion"]
             champion_count[champ] = champion_count.get(champ, 0) + 1
         most_played = max(champion_count, key=champion_count.get)
 
-        # Meilleure game (par KDA)
         best_game = max(ranked_matches, key=lambda m: m["kda"])
 
-        # Pires et meilleures stats
         total_pentas = sum(m["penta_kills"] for m in ranked_matches)
         total_quadras = sum(m["quadra_kills"] for m in ranked_matches)
         total_triples = sum(m["triple_kills"] for m in ranked_matches)
         total_doubles = sum(m["double_kills"] for m in ranked_matches)
 
-        # Streak actuel
         streak = _calculate_streak(ranked_matches)
+        champion_analysis = get_champion_analysis(ranked_matches)
 
         ranked_summary = {
             "wins": wins,
@@ -153,6 +293,7 @@ def get_lol_stats(puuid, region="euw", days=7):
             "avg_damage": avg_damage,
             "avg_vision": avg_vision,
             "avg_cs_min": avg_cs_min,
+            "avg_damage_share": avg_damage_share,
             "most_played": most_played,
             "most_played_count": champion_count[most_played],
             "best_game": best_game,
@@ -161,10 +302,9 @@ def get_lol_stats(puuid, region="euw", days=7):
             "total_triples": total_triples,
             "total_doubles": total_doubles,
             "streak": streak,
-            "champion_stats": _champion_stats(ranked_matches),
+            "champion_stats": champion_analysis,
         }
 
-    # Stats ARAM
     aram_summary = None
     if aram_matches:
         aram_wins = sum(1 for m in aram_matches if m["win"])
@@ -184,6 +324,22 @@ def get_lol_stats(puuid, region="euw", days=7):
         "aram_summary": aram_summary,
     }
 
+def get_lol_insights(puuid, region="euw", days=30):
+    matches = get_lol_matches(puuid, region, days, QUEUE_RANKED_SOLO, count=50)
+    rank = get_lol_rank(puuid, region)
+
+    if not matches:
+        return {"rank": rank, "matches": [], "champion_analysis": {}}
+
+    champion_analysis = get_champion_analysis(matches)
+
+    return {
+        "rank": rank,
+        "total_games": len(matches),
+        "matches": matches,
+        "champion_analysis": champion_analysis,
+    }
+
 def _calculate_streak(matches):
     if not matches:
         return {"type": None, "count": 0}
@@ -198,22 +354,4 @@ def _calculate_streak(matches):
     return {"type": streak_type, "count": count}
 
 def _champion_stats(matches):
-    stats = {}
-    for m in matches:
-        champ = m["champion"]
-        if champ not in stats:
-            stats[champ] = {"games": 0, "wins": 0, "kills": 0, "deaths": 0, "assists": 0}
-        stats[champ]["games"] += 1
-        if m["win"]:
-            stats[champ]["wins"] += 1
-        stats[champ]["kills"] += m["kills"]
-        stats[champ]["deaths"] += m["deaths"]
-        stats[champ]["assists"] += m["assists"]
-
-    for champ in stats:
-        g = stats[champ]
-        g["winrate"] = round(g["wins"] / g["games"] * 100, 1)
-        deaths = g["deaths"] or 1
-        g["kda"] = round((g["kills"] + g["assists"]) / deaths, 2)
-
-    return dict(sorted(stats.items(), key=lambda x: x[1]["games"], reverse=True))
+    return get_champion_analysis(matches)

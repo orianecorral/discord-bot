@@ -569,6 +569,130 @@ async def help(interaction: discord.Interaction):
 
     embed.set_footer(text="Gaming Recap Bot • Recap automatique tous les lundis à 10h")
     await interaction.response.send_message(embed=embed)
+    
+from apis.lol import get_lol_stats, get_lol_insights
+
+@tree.command(name="insights", description="Analyse détaillée par champion sur 30 jours")
+@app_commands.describe(
+    member="Membre du serveur (optionnel)",
+    champion="Filtre sur un champion spécifique (optionnel)",
+)
+async def insights(
+    interaction: discord.Interaction,
+    member: discord.Member = None,
+    champion: str = None,
+):
+    await interaction.response.defer()
+    target = member or interaction.user
+    user = get_user(str(target.id))
+
+    if not user or not user.get("lol_username"):
+        await interaction.followup.send(
+            f"❌ **{target.display_name}** n'a pas de compte LoL enregistré."
+        )
+        return
+
+    msg = await interaction.followup.send(
+        f"⏳ Analyse des 30 derniers jours de **{target.display_name}**..."
+    )
+
+    try:
+        puuid = get_puuid(user["lol_username"], user["lol_tag"])
+        if not puuid:
+            await msg.edit(content="❌ PUUID introuvable.")
+            return
+
+        data = get_lol_insights(puuid)
+        champ_analysis = data.get("champion_analysis", {})
+
+        if not champ_analysis:
+            await msg.edit(content="❌ Aucune game ranked trouvée sur 30 jours.")
+            return
+
+        # Filtre sur un champion si demandé
+        if champion:
+            champ_key = next(
+                (k for k in champ_analysis if k.lower() == champion.lower()),
+                None
+            )
+            if not champ_key:
+                await msg.edit(
+                    content=f"❌ Aucune game ranked trouvée sur **{champion}** ces 30 derniers jours."
+                )
+                return
+            champ_analysis = {champ_key: champ_analysis[champ_key]}
+
+        rank = data.get("rank", {})
+        solo = rank.get("solo") if rank else None
+        rank_str = f"{solo['tier'].capitalize()} {solo['division']} ({solo['lp']} LP)" if solo else "Non ranké"
+
+        lines = [
+            f"🔍 **INSIGHTS LOL — {target.display_name}**",
+            f"━━━━━━━━━━━━━━━━━━━━━━",
+            f"📊 {data['total_games']} games ranked sur 30 jours | {rank_str}",
+            f"━━━━━━━━━━━━━━━━━━━━━━",
+            "",
+        ]
+
+        for champ, s in list(champ_analysis.items())[:5]:
+            # Tendance
+            if s["trend"] > 5:
+                trend_str = f"📈 +{s['trend']}%"
+            elif s["trend"] < -5:
+                trend_str = f"📉 {s['trend']}%"
+            else:
+                trend_str = "➡️ stable"
+
+            # Multikills
+            multikills = []
+            if s.get("penta_kills"):
+                multikills.append(f"⚔️ Penta x{s['penta_kills']}")
+            if s.get("quadra_kills"):
+                multikills.append(f"Quadra x{s['quadra_kills']}")
+            if s.get("triple_kills"):
+                multikills.append(f"Triple x{s['triple_kills']}")
+            if s.get("double_kills"):
+                multikills.append(f"Double x{s['double_kills']}")
+            multikill_str = " | ".join(multikills) if multikills else None
+
+            # Winrate court/long
+            wr_detail = []
+            if s.get("short_game_wr") is not None:
+                wr_detail.append(f"<25min: {s['short_game_wr']}%")
+            if s.get("long_game_wr") is not None:
+                wr_detail.append(f">35min: {s['long_game_wr']}%")
+
+            pos_map = {
+                "TOP": "Top", "JUNGLE": "Jungle", "MIDDLE": "Mid",
+                "BOTTOM": "ADC", "UTILITY": "Support", "UNKNOWN": "?"
+            }
+            pos = pos_map.get(s.get("main_position", "UNKNOWN"), "?")
+
+            lines.append(f"**{champ}** ({pos}) — {s['games']}G {s['winrate']}% WR {trend_str}")
+            lines.append(
+                f"  KDA : {s['avg_kda']} ({s['avg_kills']}/{s['avg_deaths']}/{s['avg_assists']}) "
+                f"| First blood : {s['first_bloods']}x"
+            )
+            lines.append(
+                f"  Dégâts : {s['avg_damage_per_min']:,}/min ({s['avg_damage_share']}% équipe) "
+                f"| CS : {s['avg_cs_per_min']}/min"
+            )
+            lines.append(
+                f"  Gold : {s['avg_gold_per_min']:,}/min ({s['avg_gold_share']}% équipe) "
+                f"| Vision : {s['avg_vision_per_min']}/min"
+            )
+            if wr_detail:
+                lines.append(f"  Durée : {' | '.join(wr_detail)}")
+            if multikill_str:
+                lines.append(f"  {multikill_str}")
+            lines.append("")
+
+        await msg.edit(content="\n".join(lines))
+
+    except Exception as e:
+        await msg.edit(content=f"❌ Erreur : {e}")
+
+
 
 # ====================
 # UNREGISTER
