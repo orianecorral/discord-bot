@@ -77,8 +77,17 @@ async def register(
             )
             return
 
-        if game in ("lol", "tft"):
+        if game == "lol":
             puuid = get_puuid(username, tag, region)
+            if not puuid:
+                await interaction.followup.send(
+                    f"❌ Compte Riot introuvable : `{username}#{tag}`",
+                    ephemeral=True
+                )
+                return
+
+        if game == "tft":
+            puuid = get_puuid(username, tag, region, use_tft_key=True)
             if not puuid:
                 await interaction.followup.send(
                     f"❌ Compte Riot introuvable : `{username}#{tag}`",
@@ -140,13 +149,17 @@ async def register_all(
     discord_id = str(interaction.user.id)
     discord_name = interaction.user.display_name
 
-    puuid = get_puuid(riot_username, riot_tag, region)
-    if not puuid:
+    # Vérification avec clé LoL
+    puuid_lol = get_puuid(riot_username, riot_tag, region)
+    if not puuid_lol:
         await interaction.followup.send(
             f"❌ Compte Riot introuvable : `{riot_username}#{riot_tag}`",
             ephemeral=True
         )
         return
+
+    # Vérification avec clé TFT
+    puuid_tft = get_puuid(riot_username, riot_tag, region, use_tft_key=True)
 
     register_game(discord_id, discord_name, "lol", username=riot_username, tag=riot_tag)
     register_game(discord_id, discord_name, "tft", username=riot_username, tag=riot_tag)
@@ -154,7 +167,7 @@ async def register_all(
 
     lines = [
         f"✅ **LoL** : `{riot_username}#{riot_tag}`",
-        f"✅ **TFT** : `{riot_username}#{riot_tag}`",
+        f"✅ **TFT** : `{riot_username}#{riot_tag}`" + (" ⚠️ clé TFT manquante" if not puuid_tft else ""),
         f"✅ **Valorant** : `{riot_username}#{riot_tag}`",
     ]
 
@@ -207,6 +220,8 @@ async def profile(interaction: discord.Interaction, member: discord.Member = Non
 # ====================
 
 async def fetch_and_send(interaction, target, game):
+    print(f"DEBUG - Discord ID cherché: {str(target.id)}")
+    print(f"DEBUG - Discord name: {target.display_name}")
     await interaction.response.defer()
     user = get_user(str(target.id))
 
@@ -229,7 +244,7 @@ async def fetch_and_send(interaction, target, game):
             result = format_stats_embed(game, stats, target.display_name)
 
         elif game == "tft" and user.get("tft_username"):
-            puuid = get_puuid(user["tft_username"], user["tft_tag"])
+            puuid = get_puuid(user["tft_username"], user["tft_tag"], use_tft_key=True)
             stats = get_tft_stats(puuid) if puuid else None
             result = format_stats_embed(game, stats, target.display_name)
 
@@ -312,7 +327,7 @@ async def recap(interaction: discord.Interaction, member: discord.Member = None)
                 lol_stats = get_lol_stats(puuid)
 
         if user.get("tft_username"):
-            puuid = get_puuid(user["tft_username"], user["tft_tag"])
+            puuid = get_puuid(user["tft_username"], user["tft_tag"], use_tft_key=True)
             if puuid:
                 tft_stats = get_tft_stats(puuid)
 
@@ -354,7 +369,7 @@ async def recap(interaction: discord.Interaction, member: discord.Member = None)
 # ====================
 
 @tree.command(name="leaderboard", description="Classement du serveur par jeu")
-@app_commands.describe(game="Le jeu (lol, tft, valorant, cs2)")
+@app_commands.describe(game="Le jeu (lol, tft, valorant, cs2, wow)")
 async def leaderboard(interaction: discord.Interaction, game: str):
     await interaction.response.defer()
     game = game.lower()
@@ -391,7 +406,7 @@ async def leaderboard(interaction: discord.Interaction, game: str):
                         })
 
             elif game == "tft" and user.get("tft_username"):
-                puuid = get_puuid(user["tft_username"], user["tft_tag"])
+                puuid = get_puuid(user["tft_username"], user["tft_tag"], use_tft_key=True)
                 if puuid:
                     stats = get_tft_stats(puuid)
                     rank = stats.get("rank", {})

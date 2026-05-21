@@ -10,6 +10,7 @@ from apis.lol import get_lol_stats
 from apis.tft import get_tft_stats
 from apis.valorant import get_valorant_stats
 from apis.steam import get_cs2_full_stats
+from apis.wow import get_wow_stats
 from formatter import format_recap
 
 load_dotenv(override=False)
@@ -46,7 +47,7 @@ async def send_weekly_recaps(bot=None):
 
     for user in users:
         try:
-            lol_stats = tft_stats = val_stats = cs2_stats = None
+            lol_stats = tft_stats = val_stats = cs2_stats = wow_stats = None
 
             if user.get("lol_username"):
                 puuid = get_puuid(user["lol_username"], user["lol_tag"])
@@ -54,7 +55,9 @@ async def send_weekly_recaps(bot=None):
                     lol_stats = get_lol_stats(puuid)
 
             if user.get("tft_username"):
-                puuid = get_puuid(user["tft_username"], user["tft_tag"])
+                puuid = get_puuid(
+                    user["tft_username"], user["tft_tag"], use_tft_key=True
+                )
                 if puuid:
                     tft_stats = get_tft_stats(puuid)
 
@@ -66,11 +69,17 @@ async def send_weekly_recaps(bot=None):
             if user.get("steam_id"):
                 cs2_stats = get_cs2_full_stats(user["steam_id"])
 
+            if user.get("wow_character"):
+                wow_stats = get_wow_stats(
+                    user["wow_character"], user["wow_realm"], user["wow_region"]
+                )
+
             message = format_recap(
                 lol=lol_stats,
                 tft=tft_stats,
                 valorant=val_stats,
                 cs2=cs2_stats,
+                wow=wow_stats,
                 username=user["discord_name"],
                 week_start=week_start,
                 week_end=week_end,
