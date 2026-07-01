@@ -1,0 +1,12 @@
+.env
+.git
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+*.log
+gaming_bot.db
+data/
+README.md

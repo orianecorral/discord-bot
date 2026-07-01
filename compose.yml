@@ -1,0 +1,11 @@
+services:
+  discord-bot:
+    build: .
+    container_name: gaming-recap-bot
+    env_file:
+      - .env
+    volumes:
+      # Persiste la base SQLite en dehors du container,
+      # comme ça un rebuild ne fait pas perdre les inscriptions des joueurs
+      - ./data/gaming_bot.db:/app/gaming_bot.db
+    restart: unless-stopped

@@ -11,56 +11,56 @@ TFT_API_KEY = os.environ.get("TFT_API_KEY") or os.environ.get("RIOT_API_KEY")
 def get_tft_headers():
     return {"X-Riot-Token": TFT_API_KEY}
 
-# def get_tft_rank(puuid, region="euw"):
-#     platform = REGIONS.get(region, REGIONS["euw"])["platform"]
+def get_tft_rank(puuid, region="euw"):
+    platform = REGIONS.get(region, REGIONS["euw"])["platform"]
 
-#     # Cherche d'abord dans les hautes elos
-#     high_elo_endpoints = [
-#         f"https://{platform}.api.riotgames.com/tft/league/v1/challenger",
-#         f"https://{platform}.api.riotgames.com/tft/league/v1/grandmaster",
-#         f"https://{platform}.api.riotgames.com/tft/league/v1/master",
-#     ]
+    # Cherche d'abord dans les hautes elos
+    high_elo_endpoints = [
+        f"https://{platform}.api.riotgames.com/tft/league/v1/challenger",
+        f"https://{platform}.api.riotgames.com/tft/league/v1/grandmaster",
+        f"https://{platform}.api.riotgames.com/tft/league/v1/master",
+    ]
 
-#     for url in high_elo_endpoints:
-#         r = requests.get(url, headers=get_tft_headers())
-#         if r.status_code == 200:
-#             entries = r.json().get("entries", [])
-#             player = next((e for e in entries if e.get("puuid") == puuid), None)
-#             if player:
-#                 tier = url.split("/")[-1].upper()
-#                 return {
-#                     "tier": tier,
-#                     "division": "I",
-#                     "lp": player.get("leaguePoints", 0),
-#                     "wins": player.get("wins", 0),
-#                     "losses": player.get("losses", 0),
-#                     "hot_streak": player.get("hotStreak", False),
-#                 }
+    for url in high_elo_endpoints:
+        r = requests.get(url, headers=get_tft_headers())
+        if r.status_code == 200:
+            entries = r.json().get("entries", [])
+            player = next((e for e in entries if e.get("puuid") == puuid), None)
+            if player:
+                tier = url.split("/")[-1].upper()
+                return {
+                    "tier": tier,
+                    "division": "I",
+                    "lp": player.get("leaguePoints", 0),
+                    "wins": player.get("wins", 0),
+                    "losses": player.get("losses", 0),
+                    "hot_streak": player.get("hotStreak", False),
+                }
 
-#     # Cherche dans les tiers normaux
-#     tiers = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
-#     divisions = ["I", "II", "III", "IV"]
+    # Cherche dans les tiers normaux
+    tiers = ["DIAMOND", "EMERALD", "PLATINUM", "GOLD", "SILVER", "BRONZE", "IRON"]
+    divisions = ["I", "II", "III", "IV"]
 
-#     for tier in tiers:
-#         for division in divisions:
-#             url = f"https://{platform}.api.riotgames.com/tft/league/v1/entries/{tier}/{division}"
-#             params = {"page": 1}
-#             r = requests.get(url, headers=get_tft_headers(), params=params)
-#             if r.status_code != 200:
-#                 continue
-#             entries = r.json()
-#             player = next((e for e in entries if e.get("puuid") == puuid), None)
-#             if player:
-#                 return {
-#                     "tier": tier,
-#                     "division": division,
-#                     "lp": player.get("leaguePoints", 0),
-#                     "wins": player.get("wins", 0),
-#                     "losses": player.get("losses", 0),
-#                     "hot_streak": player.get("hotStreak", False),
-#                 }
+    for tier in tiers:
+        for division in divisions:
+            url = f"https://{platform}.api.riotgames.com/tft/league/v1/entries/{tier}/{division}"
+            params = {"page": 1}
+            r = requests.get(url, headers=get_tft_headers(), params=params)
+            if r.status_code != 200:
+                continue
+            entries = r.json()
+            player = next((e for e in entries if e.get("puuid") == puuid), None)
+            if player:
+                return {
+                    "tier": tier,
+                    "division": division,
+                    "lp": player.get("leaguePoints", 0),
+                    "wins": player.get("wins", 0),
+                    "losses": player.get("losses", 0),
+                    "hot_streak": player.get("hotStreak", False),
+                }
 
-#     return {"tier": "UNRANKED", "division": "", "lp": 0}
+    return {"tier": "UNRANKED", "division": "", "lp": 0}
 
 def get_tft_matches(puuid, region="euw", days=7):
     regional = REGIONS.get(region, REGIONS["euw"])["regional"]
